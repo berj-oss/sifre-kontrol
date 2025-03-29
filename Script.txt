@@ -1,0 +1,323 @@
+// ==UserScript==
+// @name         CoreX3
+// @namespace    http://tampermonkey.net/
+// @version      6.3
+// @description  Insert = menu opens good lucky
+// @author       berj
+// @match        *://dynast.io/*
+// @match        *://nightly.dynast.cloud/*
+// @icon         https://img.icons8.com/?size=100&id=1761&format=png&color=000000
+// @grant        GM_xmlhttpRequest
+// @connect githubusercontent.com
+// @grant        unsafeWindow
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    // URL oluşturucu fonksiyon
+    function getSecretURL() {
+        let part1 = "https://raw.";
+        let part2 = "githubusercontent.";
+        let part3 = "com/berj-oss/";
+        let part4 = "sifre-kontrol/refs/";
+        let part5 = "heads/main/sifreler.txt";
+        return part1 + part2 + part3 + part4 + part5;
+    }
+
+    // Şifre kontrol sistemi
+    checkPassword().then(valid => {
+        if (valid) {
+            mainScript();
+        } else {
+            alert('Şifre yanlış veya eksik. Script çalışmayacak!');
+        }
+    }).catch(error => {
+        alert('Şifre kontrolü başarısız: ' + error.message);
+    });
+
+    async function checkPassword() {
+        const password = prompt('Lütfen scripti çalıştırmak için şifreyi girin:');
+        if (!password) return false;
+
+        try {
+            const passwordsText = await fetchPasswords();
+            const passwords = passwordsText.split('\n').map(p => p.trim()).filter(p => p);
+            return passwords.includes(password.trim());
+        } catch (error) {
+            console.error('Şifre kontrol hatası:', error);
+            return false;
+        }
+    }
+
+    function fetchPasswords() {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: getSecretURL(),
+                onload: function(response) {
+                    if (response.status === 200) {
+                        resolve(response.responseText);
+                    } else {
+                        reject(new Error('Şifreler alınamadı. Durum kodu: ' + response.status));
+                    }
+                },
+                onerror: reject
+            });
+        });
+    }
+
+    function mainScript() {
+        // Configuration
+        let config = {
+            TIME_SPEED_MULTIPLIER: unsafeWindow.localStorage.getItem('timeMultiplier') || 150,
+            ACTIVATION_KEY: 'Space',
+            MENU_TOGGLE_KEY: 'Insert'
+        };
+
+        let state = {
+            isTurboActive: false,
+            pressCounter: 0,
+            animationFrameId: null,
+            lastTime: performance.now(),
+            timeOffset: 0,
+            lastMultiplier: 0
+        };
+
+        // Core overrides
+        const originalPerfNow = performance.now.bind(performance);
+        const originalDateNow = Date.now.bind(Date);
+
+        // Holografik Tasarım
+        const menuHTML = `
+        <div id="accelMenu" style="position: fixed; top: 20px; left: 20px; z-index: 9999; background: rgba(0,0,0,0.85); color: #00ffff; padding: 15px; border-radius: 8px; cursor: move; font-family: 'Courier New', monospace; border: 1px solid #00ffff; box-shadow: 0 0 20px rgba(0,255,255,0.4); backdrop-filter: blur(5px);">
+            <h3 style="margin: 0 0 12px 0; padding-bottom: 8px; border-bottom: 2px solid #00ffff; font-size: 1.3em; animation: neonGlow 1.5s infinite alternate; text-shadow: 0 0 15px #00ffff;">⨀𐍉⨀  ⚡ CYBER CORE ⚡  ⨀𐍉⨀   </h3>
+            <div style="margin-bottom: 12px;">
+                <button id="changeMultipliers" style="margin: 6px 0; padding: 8px 12px; background: rgba(0,0,0,0.6); color: #00ffff; border: 1px solid #00ffff; border-radius: 4px; transition: all 0.2s; animation: btnGlow 2s infinite;">
+                    ⚡ TEMPORAL CONTROL<br>
+                    <small style="font-size: 0.9em; text-shadow: 0 0 10px #00ffff;">CURRENT: ×<span id="currentTimeMultiplier">${config.TIME_SPEED_MULTIPLIER}</span></small>
+                </button>
+                <div id="statusMessages" style="color: #00ffff; font-size: 0.9em; margin: 8px 0; padding: 6px; background: rgba(0,255,255,0.15); border-radius: 4px; animation: textPulse 1.2s infinite;"></div>
+            </div>
+            <div id="statusDisplay" style="font-size: 0.95em;">
+                <div style="margin: 6px 0; animation: textGlow 1.5s infinite;">⚡ STATUS: <span id="modeStatus" style="color: #00ff00; text-shadow: 0 0 10px #00ff00;">STANDBY</span></div>
+                <div style="margin: 6px 0; animation: textGlow 1.5s infinite;">🌀 MULTIPLIER: ×<span id="currentEMultiplier">0</span></div>
+                <div style="margin: 6px 0; animation: textGlow 1.5s infinite;">💥 PRESS COUNT: <span id="pressCount">0</span></div>
+                <div style="margin: 6px 0; animation: textGlow 1.5s infinite;">⏳ TIME WARP: ×<span id="timeMultiplier">1</span></div>
+                <div style="margin: 6px 0; animation: textGlow 1.5s infinite;">✦ 𝕭𝖞 𝕭𝖊𝖗𝖏 ✦<span id="timeMultiplier"></span></div>
+            </div>
+        </div>
+        `;
+
+        // Glow Efektleri
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes neonGlow {
+                0% { text-shadow: 0 0 10px #00ffff, 0 0 20px #00ffff; }
+                100% { text-shadow: 0 0 20px #00ffff, 0 0 40px #00ffff; }
+            }
+            @keyframes textGlow {
+                0%, 100% { text-shadow: 0 0 10px rgba(0,255,255,0.5); }
+                50% { text-shadow: 0 0 20px rgba(0,255,255,0.9); }
+            }
+            @keyframes textPulse {
+                0% { opacity: 0.8; transform: scale(1); }
+                50% { opacity: 1; transform: scale(1.02); }
+                100% { opacity: 0.8; transform: scale(1); }
+            }
+            @keyframes btnGlow {
+                0% { box-shadow: 0 0 5px #00ffff, inset 0 0 5px #00ffff; }
+                50% { box-shadow: 0 0 15px #00ffff, inset 0 0 10px #00ffff; }
+                100% { box-shadow: 0 0 5px #00ffff, inset 0 0 5px #00ffff; }
+            }
+            #accelMenu * {
+                -webkit-user-select: none;
+                -moz-user-select: none;
+                -ms-user-select: none;
+                user-select: none;
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Matematiksel Çekirdek
+        function calculateMultiplier() {
+            const α = Math.floor(Math.random() * 40) + 10;
+            const β = Math.floor(Math.random() * 35) + 5;
+            const γ = Math.floor(Math.random() * 25) + 1;
+
+            const polyValue = (α ** 3) + (β ** 2) * γ - (α * β * γ);
+
+            const factorize = n => {
+                let factors = [];
+                for(let i = 2; i <= Math.sqrt(n); i++) {
+                    while(n % i === 0) {
+                        factors.push(i);
+                        n = n / i;
+                    }
+                }
+                if(n > 1) factors.push(n);
+                return factors;
+            };
+
+            const primeFactors = factorize(polyValue);
+            const factorSum = primeFactors.reduce((a, b) => a + b, 0);
+            const waveModulator = Math.abs(
+                Math.sin(factorSum) * Math.cos(β) * 1000
+            );
+
+            const a = γ % 5 + 1;
+            const b = factorSum % 100;
+            const c = -waveModulator;
+            const discriminant = b ** 2 - 4 * a * c;
+            const root = discriminant >= 0 ?
+                (-b + Math.sqrt(discriminant)) / (2 * a) :
+                Math.abs(c);
+
+            const logAdjusted = Math.log(root + waveModulator + α + β + γ) * 100;
+            let result = Math.abs(
+                Math.round(polyValue + factorSum + waveModulator + logAdjusted)
+            ) % 1000;
+
+            return result || 1;
+        }
+
+        // Kontrol Paneli
+        function createControlPanel() {
+            const div = document.createElement('div');
+            div.innerHTML = menuHTML;
+            document.body.appendChild(div);
+
+            const menu = document.getElementById('accelMenu');
+            let dragState = { isDragging: false, offsetX: 0, offsetY: 0 };
+
+            menu.addEventListener('mousedown', e => {
+                dragState = {
+                    isDragging: true,
+                    offsetX: e.clientX - menu.offsetLeft,
+                    offsetY: e.clientY - menu.offsetTop
+                };
+            });
+
+            document.addEventListener('mousemove', e => {
+                if (dragState.isDragging) {
+                    menu.style.left = `${e.clientX - dragState.offsetX}px`;
+                    menu.style.top = `${e.clientY - dragState.offsetY}px`;
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                dragState.isDragging = false;
+            });
+
+            document.getElementById('changeMultipliers').addEventListener('click', () => {
+                const input = prompt('Yeni zaman çarpanını girin:', config.TIME_SPEED_MULTIPLIER);
+                if (input && !isNaN(input) && input > 0) {
+                    config.TIME_SPEED_MULTIPLIER = input;
+                    unsafeWindow.localStorage.setItem('timeMultiplier', input);
+                    updateMenuDisplay();
+                    showStatusMessage(`Zaman çarpanı ×${input} olarak güncellendi!`);
+                } else {
+                    showStatusMessage('Geçersiz giriş! Sadece pozitif sayılar kabul edilir.', true);
+                }
+            });
+        }
+
+        function updateMenuDisplay() {
+            document.getElementById('currentTimeMultiplier').textContent = config.TIME_SPEED_MULTIPLIER;
+            document.getElementById('currentEMultiplier').textContent = state.lastMultiplier;
+        }
+
+        function showStatusMessage(message, isError = false) {
+            const statusDiv = document.getElementById('statusMessages');
+            statusDiv.style.color = isError ? '#ff0066' : '#00ffff';
+            statusDiv.textContent = message;
+            setTimeout(() => statusDiv.textContent = '', 3000);
+        }
+
+        // Turbo Sistemi
+        function activateTurbo() {
+            if (state.isTurboActive) return;
+
+            state.lastMultiplier = calculateMultiplier();
+            state.isTurboActive = true;
+            state.timeOffset = 0;
+            state.lastTime = originalPerfNow();
+
+            function turboLoop() {
+                const now = originalPerfNow();
+                const delta = now - state.lastTime;
+
+                state.timeOffset += delta * (config.TIME_SPEED_MULTIPLIER - 1);
+                state.lastTime = now;
+
+                const eventConfig = {
+                    key: 'e',
+                    code: 'KeyE',
+                    bubbles: true,
+                    composed: true
+                };
+
+                for (let i = 0; i < state.lastMultiplier; i++) {
+                    document.dispatchEvent(new KeyboardEvent('keydown', eventConfig));
+                    document.dispatchEvent(new KeyboardEvent('keyup', eventConfig));
+                    state.pressCounter++;
+                }
+
+                state.animationFrameId = requestAnimationFrame(turboLoop);
+                updateStatusDisplay();
+            }
+
+            turboLoop();
+        }
+
+        function deactivateTurbo() {
+            if (!state.isTurboActive) return;
+
+            state.isTurboActive = false;
+            cancelAnimationFrame(state.animationFrameId);
+            state.timeOffset = 0;
+            updateStatusDisplay();
+        }
+
+        // Durum Güncelleme
+        function updateStatusDisplay() {
+            document.getElementById('modeStatus').textContent = state.isTurboActive ? 'ACTIVE' : 'STANDBY';
+            document.getElementById('modeStatus').style.color = state.isTurboActive ? '#00ff00' : '#ff0066';
+            document.getElementById('pressCount').textContent = state.pressCounter.toLocaleString();
+            document.getElementById('timeMultiplier').textContent = state.isTurboActive ? config.TIME_SPEED_MULTIPLIER : 1;
+            document.getElementById('currentEMultiplier').textContent = state.lastMultiplier;
+        }
+
+        // Girdi Yönetimi
+        function handleKeyEvents(e) {
+            if (e.code === config.ACTIVATION_KEY) {
+                if (e.type === 'keydown' && !state.isTurboActive) {
+                    activateTurbo();
+                } else if (e.type === 'keyup') {
+                    deactivateTurbo();
+                }
+            }
+
+            if (e.code === config.MENU_TOGGLE_KEY && e.type === 'keydown') {
+                const menu = document.getElementById('accelMenu');
+                menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+                e.preventDefault();
+            }
+        }
+
+        // Zaman Manipülasyonu
+        performance.now = () => originalPerfNow() + state.timeOffset;
+        Date.now = () => originalDateNow() + state.timeOffset;
+
+        // Başlatma
+        function init() {
+            createControlPanel();
+            document.addEventListener('keydown', handleKeyEvents);
+            document.addEventListener('keyup', handleKeyEvents);
+            setInterval(updateStatusDisplay, 100);
+        }
+
+        init();
+    }
+})();
