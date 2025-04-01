@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         CoreX3
+// @name         CoreX3 Kod koruması
 // @namespace    http://tampermonkey.net/
 // @version      6.3
 // @description  Insert = menu opens good lucky
@@ -26,9 +26,13 @@
         return part1 + part2 + part3 + part4 + part5;
     }
 
+    // Kod bütünlük kontrol URL'si
+    const CODE_INTEGRITY_URL = 'https://raw.githubusercontent.com/berj-oss/sifre-kontrol/refs/heads/main/Script.txt';
+
     // Şifre kontrol sistemi
     checkPassword().then(valid => {
         if (valid) {
+            // Kod bütünlük kontrolünü bypass et
             mainScript();
         } else {
             alert('Şifre yanlış veya eksik. Script çalışmayacak!');
